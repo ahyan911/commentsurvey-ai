@@ -1,15 +1,16 @@
 """
-AI Service — Groq version
+AI Service — Groq version.
+
 Handles:
-  1. Comment classification: sentiment + opinion
-  2. Theme extraction
-  3. Summary generation
+1. Comment classification: sentiment + opinion
+2. Theme extraction
+3. Summary generation
 """
 
-import os
 import json
+import os
 import re
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
@@ -21,6 +22,8 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise RuntimeError("Missing GROQ_API_KEY environment variable")
 
+# Groq supports OpenAI-compatible client usage with this base URL.
+# Docs: https://console.groq.com/docs/openai
 client = AsyncOpenAI(
     api_key=GROQ_API_KEY,
     base_url="https://api.groq.com/openai/v1",
@@ -34,11 +37,11 @@ def safe_json_loads(text: str) -> Any:
     Safely parse JSON from model output.
     Handles normal JSON and accidental markdown/code-fence output.
     """
+
     if not text:
         return {}
 
     cleaned = text.strip()
-
     cleaned = cleaned.replace("```json", "").replace("```", "").strip()
 
     try:
@@ -64,6 +67,11 @@ def safe_json_loads(text: str) -> Any:
 
 
 def normalize_label(value: str, allowed: List[str], default: str = "neutral") -> str:
+    """
+    Keep only expected labels.
+    Anything unexpected becomes neutral.
+    """
+
     value = str(value or "").lower().strip()
     return value if value in allowed else default
 
@@ -95,6 +103,10 @@ Return ONLY valid JSON in this exact format:
 
 
 async def classify_comments(comments: List[str]) -> List[Dict[str, str]]:
+    """
+    Classify all comments in one batch request.
+    """
+
     payload = json.dumps(comments, ensure_ascii=False)
 
     response = await client.chat.completions.create(
@@ -161,6 +173,10 @@ Return ONLY valid JSON in this format:
 
 
 async def extract_themes(comments: List[str]) -> List[str]:
+    """
+    Extract 3 to 5 key themes from the full comment set.
+    """
+
     joined = "\n".join(f"- {comment}" for comment in comments)
 
     response = await client.chat.completions.create(
@@ -179,6 +195,7 @@ async def extract_themes(comments: List[str]) -> List[str]:
     themes = data.get("themes", []) if isinstance(data, dict) else []
 
     clean_themes = []
+
     for theme in themes:
         if isinstance(theme, str) and theme.strip():
             clean_themes.append(theme.strip())
@@ -196,6 +213,10 @@ Do not use bullet points.
 
 
 async def generate_summary(comments: List[str], stats: Dict) -> str:
+    """
+    Produce a plain-English summary paragraph.
+    """
+
     joined = "\n".join(f"- {comment}" for comment in comments)
 
     context = (
