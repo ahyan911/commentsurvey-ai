@@ -4,8 +4,9 @@ POST /api/analyze-youtube
 YouTube URL analysis:
 1. Extract video ID
 2. Fetch video metadata and total comment count
-3. Fetch top-level comments
-4. Analyze comments with existing AI pipeline
+3. Fetch relevant comments
+4. Pick most-liked comments from that sample
+5. Analyze comments with existing AI pipeline
 """
 
 import asyncio
@@ -35,6 +36,7 @@ async def analyze_youtube(request: YouTubeAnalyzeRequest):
             video_id=video_id,
             max_comments=request.max_comments,
             order="relevance",
+            fetch_pool_size=200,
         )
 
         if not comments:
@@ -74,8 +76,9 @@ async def analyze_youtube(request: YouTubeAnalyzeRequest):
             total_youtube_comments=total_youtube_comments,
             analyzed_comments=total,
             sample_note=(
-                f"Analyzed {total:,} top-level comments out of "
-                f"{total_youtube_comments:,} total reported comments."
+                f"Analyzed {total:,} most-liked comments selected from a "
+                f"relevance-based YouTube sample. Total reported comments: "
+                f"{total_youtube_comments:,}."
             ),
         )
 
