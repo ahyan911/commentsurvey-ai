@@ -33,8 +33,8 @@ client = AsyncOpenAI(
 
 MODEL = "llama-3.3-70b-versatile"
 
-CLASSIFICATION_BATCH_SIZE = 100
-MAX_PARALLEL_AI_CALLS = 3
+CLASSIFICATION_BATCH_SIZE = 25
+MAX_PARALLEL_AI_CALLS = 1
 
 
 def safe_json_loads(text: str) -> Any:
