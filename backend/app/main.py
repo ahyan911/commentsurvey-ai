@@ -8,7 +8,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import analyze, youtube_analyze
+from app.routes.analyze import router as analyze_router
+from app.routes.youtube_analyze import router as youtube_analyze_router
 
 app = FastAPI(
     title="CommentSurvey AI",
@@ -26,8 +27,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(analyze.router, prefix="/api")
-app.include_router(youtube_analyze.router, prefix="/api")
+app.include_router(analyze_router, prefix="/api")
+app.include_router(youtube_analyze_router, prefix="/api")
 
 
 @app.get("/")
