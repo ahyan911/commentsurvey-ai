@@ -22,10 +22,10 @@ class YouTubeAnalyzeRequest(BaseModel):
         examples=["https://www.youtube.com/watch?v=dQw4w9WgXcQ"],
     )
     max_comments: int = Field(
-        default=500,
+        default=25,
         ge=1,
-        le=5000,
-        description="Maximum number of YouTube comments to fetch and analyze",
+        le=60,
+        description="Maximum number of most-liked YouTube comments to analyze",
     )
 
 
@@ -44,7 +44,6 @@ class AnalyzeResponse(BaseModel):
     summary: str
     total_comments: int
 
-    # Optional YouTube fields
     source: Optional[str] = None
     video_id: Optional[str] = None
     video_title: Optional[str] = None
