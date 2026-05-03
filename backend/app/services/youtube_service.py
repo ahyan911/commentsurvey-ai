@@ -4,7 +4,9 @@ YouTube Service.
 Handles:
 1. Extracting video ID from YouTube URLs
 2. Fetching video metadata and total comment count
-3. Fetching top-level comments through YouTube Data API v3
+3. Fetching a relevance-based comment pool
+4. Sorting comments by like count
+5. Returning only the top most-liked comments for AI analysis
 """
 
 import html
@@ -45,6 +47,7 @@ def extract_video_id(url: str) -> str:
 
     if host == "youtu.be":
         video_id = path.split("/")[0]
+
         if re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
             return video_id
 
@@ -69,10 +72,6 @@ def extract_video_id(url: str) -> str:
 
 
 def _require_youtube_key() -> str:
-    """
-    Ensure Railway has YOUTUBE_API_KEY configured.
-    """
-
     if not YOUTUBE_API_KEY:
         raise RuntimeError("Missing YOUTUBE_API_KEY environment variable")
 
@@ -80,10 +79,6 @@ def _require_youtube_key() -> str:
 
 
 def _extract_error_message(data: Dict) -> str:
-    """
-    Convert YouTube API errors into readable messages.
-    """
-
     error = data.get("error", {})
     message = error.get("message")
 
@@ -157,25 +152,35 @@ async def get_youtube_video_info(video_id: str) -> Dict:
 
 async def fetch_youtube_comments(
     video_id: str,
-    max_comments: int = 500,
+    max_comments: int = 25,
     order: str = "relevance",
+    fetch_pool_size: int = 200,
 ) -> List[str]:
     """
-    Fetch top-level YouTube comments.
+    Fetch a relevance-based pool of YouTube comments, sort by like count,
+    and return only the top most-liked comments.
 
-    This MVP fetches top-level comments only, not replies.
+    Example:
+    - Fetch 200 relevant comments
+    - Sort those comments by like_count
+    - Return top 25, 50, or 60 comments
     """
 
     api_key = _require_youtube_key()
-    max_comments = max(1, min(max_comments, 5000))
 
-    comments: List[str] = []
+    # Product limit for MVP to protect Groq usage.
+    max_comments = max(1, min(max_comments, 60))
+
+    # Fetch more than we analyze, so top-liked selection is meaningful.
+    fetch_pool_size = max(max_comments, min(fetch_pool_size, 300))
+
+    candidates: List[Dict] = []
     seen = set()
     next_page_token: Optional[str] = None
 
     async with httpx.AsyncClient(timeout=30) as client:
-        while len(comments) < max_comments:
-            remaining = max_comments - len(comments)
+        while len(candidates) < fetch_pool_size:
+            remaining = fetch_pool_size - len(candidates)
 
             params = {
                 "part": "snippet",
@@ -212,12 +217,18 @@ async def fetch_youtube_comments(
                 )
 
                 text = html.unescape(text).strip()
+                like_count = int(top_snippet.get("likeCount", 0))
 
                 if text and text not in seen:
-                    comments.append(text)
+                    candidates.append(
+                        {
+                            "text": text,
+                            "like_count": like_count,
+                        }
+                    )
                     seen.add(text)
 
-                if len(comments) >= max_comments:
+                if len(candidates) >= fetch_pool_size:
                     break
 
             next_page_token = data.get("nextPageToken")
@@ -225,4 +236,6 @@ async def fetch_youtube_comments(
             if not next_page_token:
                 break
 
-    return comments
+    candidates.sort(key=lambda item: item["like_count"], reverse=True)
+
+    return [item["text"] for item in candidates[:max_comments]]
