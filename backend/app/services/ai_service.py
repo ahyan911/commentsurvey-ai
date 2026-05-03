@@ -6,8 +6,7 @@ Handles:
 2. Theme extraction
 3. Summary generation
 
-Designed to handle larger YouTube comment batches by processing classification
-in smaller chunks.
+Optimized for small survey batches to avoid Groq rate-limit errors.
 """
 
 import asyncio
@@ -31,10 +30,11 @@ client = AsyncOpenAI(
     base_url="https://api.groq.com/openai/v1",
 )
 
-MODEL = "llama-3.3-70b-versatile"
+# Smaller, faster, cheaper model for survey classification.
+MODEL = "llama-3.1-8b-instant"
 
-# Safer Groq limits for free/on-demand tier
-CLASSIFICATION_BATCH_SIZE = 25
+# Safer limits for Groq free/on-demand tier.
+CLASSIFICATION_BATCH_SIZE = 10
 MAX_PARALLEL_AI_CALLS = 1
 
 
@@ -153,8 +153,7 @@ async def _classify_comment_batch(comments: List[str]) -> List[Dict[str, str]]:
 
 async def classify_comments(comments: List[str]) -> List[Dict[str, str]]:
     """
-    Classify comments in chunks so larger YouTube comment batches do not break
-    the model context window or Groq token-per-minute limits.
+    Classify comments in small chunks to avoid token-per-minute limits.
     """
 
     chunks = [
@@ -198,10 +197,10 @@ Return ONLY valid JSON in this format:
 
 async def extract_themes(comments: List[str]) -> List[str]:
     """
-    Extract themes from a smaller representative sample to avoid Groq rate limits.
+    Extract themes from a small representative sample.
     """
 
-    sample = comments[:100]
+    sample = comments[:50]
     joined = "\n".join(f"- {comment}" for comment in sample)
 
     response = await client.chat.completions.create(
@@ -240,10 +239,9 @@ Do not use bullet points.
 async def generate_summary(comments: List[str], stats: Dict) -> str:
     """
     Produce a plain-English summary paragraph.
-    Uses a smaller sample so large YouTube videos do not create oversized prompts.
     """
 
-    sample = comments[:50]
+    sample = comments[:25]
     joined = "\n".join(f"- {comment}" for comment in sample)
 
     context = (
