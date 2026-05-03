@@ -2,23 +2,54 @@ import { AnalysisResult } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-/**
- * POST /api/analyze
- * Sends comment array to FastAPI backend, returns structured analysis.
- */
+async function parseApiError(response: Response): Promise<string> {
+  const data = await response.json().catch(() => null);
+
+  if (data?.detail) {
+    return typeof data.detail === "string"
+      ? data.detail
+      : JSON.stringify(data.detail);
+  }
+
+  return `Request failed with status ${response.status}`;
+}
+
 export async function analyzeComments(
   comments: string[]
 ): Promise<AnalysisResult> {
-  const res = await fetch(`${API_URL}/api/analyze`, {
+  const response = await fetch(`${API_URL}/api/analyze`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({ comments }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(err.detail ?? `HTTP ${res.status}`);
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
   }
 
-  return res.json() as Promise<AnalysisResult>;
+  return response.json() as Promise<AnalysisResult>;
+}
+
+export async function analyzeYoutubeVideo(
+  url: string,
+  maxComments: number
+): Promise<AnalysisResult> {
+  const response = await fetch(`${API_URL}/api/analyze-youtube`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      url,
+      max_comments: maxComments,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseApiError(response));
+  }
+
+  return response.json() as Promise<AnalysisResult>;
 }
