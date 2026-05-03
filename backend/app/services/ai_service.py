@@ -5,8 +5,12 @@ Handles:
 1. Comment classification: sentiment + opinion
 2. Theme extraction
 3. Summary generation
+
+Designed to handle larger YouTube comment batches by processing classification
+in smaller chunks.
 """
 
+import asyncio
 import json
 import os
 import re
@@ -22,14 +26,15 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     raise RuntimeError("Missing GROQ_API_KEY environment variable")
 
-# Groq supports OpenAI-compatible client usage with this base URL.
-# Docs: https://console.groq.com/docs/openai
 client = AsyncOpenAI(
     api_key=GROQ_API_KEY,
     base_url="https://api.groq.com/openai/v1",
 )
 
 MODEL = "llama-3.3-70b-versatile"
+
+CLASSIFICATION_BATCH_SIZE = 100
+MAX_PARALLEL_AI_CALLS = 3
 
 
 def safe_json_loads(text: str) -> Any:
@@ -67,11 +72,6 @@ def safe_json_loads(text: str) -> Any:
 
 
 def normalize_label(value: str, allowed: List[str], default: str = "neutral") -> str:
-    """
-    Keep only expected labels.
-    Anything unexpected becomes neutral.
-    """
-
     value = str(value or "").lower().strip()
     return value if value in allowed else default
 
@@ -102,11 +102,7 @@ Return ONLY valid JSON in this exact format:
 """
 
 
-async def classify_comments(comments: List[str]) -> List[Dict[str, str]]:
-    """
-    Classify all comments in one batch request.
-    """
-
+async def _classify_comment_batch(comments: List[str]) -> List[Dict[str, str]]:
     payload = json.dumps(comments, ensure_ascii=False)
 
     response = await client.chat.completions.create(
@@ -154,6 +150,33 @@ async def classify_comments(comments: List[str]) -> List[Dict[str, str]]:
     return normalised[: len(comments)]
 
 
+async def classify_comments(comments: List[str]) -> List[Dict[str, str]]:
+    """
+    Classify comments in chunks so 1,000–5,000 YouTube comments do not break
+    the model context window.
+    """
+
+    chunks = [
+        comments[index : index + CLASSIFICATION_BATCH_SIZE]
+        for index in range(0, len(comments), CLASSIFICATION_BATCH_SIZE)
+    ]
+
+    semaphore = asyncio.Semaphore(MAX_PARALLEL_AI_CALLS)
+
+    async def run_chunk(chunk: List[str]) -> List[Dict[str, str]]:
+        async with semaphore:
+            return await _classify_comment_batch(chunk)
+
+    chunk_results = await asyncio.gather(*(run_chunk(chunk) for chunk in chunks))
+
+    flattened: List[Dict[str, str]] = []
+
+    for result in chunk_results:
+        flattened.extend(result)
+
+    return flattened[: len(comments)]
+
+
 THEMES_SYSTEM = """
 You are a theme extraction engine.
 
@@ -174,10 +197,11 @@ Return ONLY valid JSON in this format:
 
 async def extract_themes(comments: List[str]) -> List[str]:
     """
-    Extract 3 to 5 key themes from the full comment set.
+    Extract themes from a representative sample to avoid huge prompts.
     """
 
-    joined = "\n".join(f"- {comment}" for comment in comments)
+    sample = comments[:600]
+    joined = "\n".join(f"- {comment}" for comment in sample)
 
     response = await client.chat.completions.create(
         model=MODEL,
@@ -194,7 +218,7 @@ async def extract_themes(comments: List[str]) -> List[str]:
 
     themes = data.get("themes", []) if isinstance(data, dict) else []
 
-    clean_themes = []
+    clean_themes: List[str] = []
 
     for theme in themes:
         if isinstance(theme, str) and theme.strip():
@@ -215,9 +239,11 @@ Do not use bullet points.
 async def generate_summary(comments: List[str], stats: Dict) -> str:
     """
     Produce a plain-English summary paragraph.
+    Uses a sample so large YouTube videos do not create oversized prompts.
     """
 
-    joined = "\n".join(f"- {comment}" for comment in comments)
+    sample = comments[:300]
+    joined = "\n".join(f"- {comment}" for comment in sample)
 
     context = (
         f"Stats: {stats['yes_pct']:.0f}% yes, "
