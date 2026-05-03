@@ -8,26 +8,26 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import analyze
+from app.routes import analyze, youtube_analyze
 
 app = FastAPI(
     title="CommentSurvey AI",
-    description="Converts social media comments into structured survey insights",
-    version="1.0.0",
+    description="Converts social media and YouTube comments into structured survey insights",
+    version="1.1.0",
 )
 
-# Frontend URLs allowed to call this backend.
-# For beginner deployment, "*" is easiest.
-# Later, replace "*" with your exact Vercel URL for better security.
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGINS", "*").split(","),
-    allow_credentials=True,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(analyze.router, prefix="/api")
+app.include_router(youtube_analyze.router, prefix="/api")
 
 
 @app.get("/")
