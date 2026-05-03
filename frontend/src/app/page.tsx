@@ -20,13 +20,13 @@ The design is nice though.
 No, very disappointed. The description was misleading.
 Yes! Works exactly as described. Very happy with my order.`;
 
-const COMMENT_LIMITS = [100, 500, 1000, 2500, 5000];
+const COMMENT_LIMITS = [25, 50, 100, 250, 500];
 
 export default function Home() {
   const [mode, setMode] = useState<InputMode>("manual");
   const [raw, setRaw] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [maxComments, setMaxComments] = useState(500);
+  const [maxComments, setMaxComments] = useState(50);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
