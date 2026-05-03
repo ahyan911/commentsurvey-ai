@@ -5,6 +5,7 @@ import { useState } from "react";
 import ResultsDashboard from "@/components/ResultsDashboard";
 import Spinner from "@/components/Spinner";
 import { analyzeComments, analyzeYoutubeVideo } from "@/lib/api";
+import { downloadInsightsPdf } from "@/lib/pdf";
 import { AnalysisResult } from "@/lib/types";
 
 type InputMode = "manual" | "youtube";
@@ -215,7 +216,9 @@ Maybe it's okay but a bit expensive.`}
 
                 <select
                   value={maxComments}
-                  onChange={(event) => setMaxComments(Number(event.target.value))}
+                  onChange={(event) =>
+                    setMaxComments(Number(event.target.value))
+                  }
                   className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 >
                   {COMMENT_LIMITS.map((limit) => (
@@ -227,9 +230,9 @@ Maybe it's okay but a bit expensive.`}
               </div>
 
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                For large videos, 5,000 comments can take longer because the
-                backend fetches comments in pages and analyzes them in AI
-                batches.
+                For large videos, use smaller samples first. Higher comment
+                counts can take longer because the backend fetches comments in
+                pages and analyzes them in AI batches.
               </div>
             </div>
           )}
@@ -340,6 +343,25 @@ Maybe it's okay but a bit expensive.`}
                 </div>
               </section>
             )}
+
+            <div className="mb-5 flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-900">
+                  Export Insights
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Download a clean PDF report with the summary, themes, opinion
+                  breakdown, and sentiment distribution.
+                </p>
+              </div>
+
+              <button
+                onClick={() => downloadInsightsPdf(result)}
+                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
+              >
+                Download PDF Report
+              </button>
+            </div>
 
             <ResultsDashboard result={result} />
           </div>
