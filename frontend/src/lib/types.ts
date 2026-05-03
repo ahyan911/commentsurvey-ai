@@ -12,6 +12,15 @@ export interface AnalysisResult {
   themes: string[];
   summary: string;
   total_comments: number;
+
+  source?: "manual" | "youtube";
+  video_id?: string;
+  video_title?: string;
+  video_url?: string;
+  thumbnail_url?: string;
+  total_youtube_comments?: number;
+  analyzed_comments?: number;
+  sample_note?: string;
 }
 
 export interface ApiError {
