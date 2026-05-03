@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import ResultsDashboard from "@/components/ResultsDashboard";
 import Spinner from "@/components/Spinner";
@@ -9,6 +9,11 @@ import { downloadInsightsPdf } from "@/lib/pdf";
 import { AnalysisResult } from "@/lib/types";
 
 type InputMode = "manual" | "youtube";
+
+type DailyCounter = {
+  used: number;
+  resetAt: number;
+};
 
 const EXAMPLE_COMMENTS = `Yes this product is absolutely amazing! Worth every penny.
 No I didn't like it, the quality was terrible and it broke after a week.
@@ -21,16 +26,68 @@ The design is nice though.
 No, very disappointed. The description was misleading.
 Yes! Works exactly as described. Very happy with my order.`;
 
-const COMMENT_LIMITS = [25, 50, 100, 250, 500];
+const COMMENT_LIMITS = [25, 50, 60];
+
+const DAILY_INSIGHT_LIMIT = 50;
+const INSIGHT_COUNTER_KEY = "commentsurvey_daily_counter";
+
+function createFreshCounter(): DailyCounter {
+  return {
+    used: 0,
+    resetAt: Date.now() + 24 * 60 * 60 * 1000,
+  };
+}
+
+function getResetText(resetAt: number): string {
+  const remaining = Math.max(0, resetAt - Date.now());
+  const hours = Math.floor(remaining / (1000 * 60 * 60));
+  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+
+  return `${hours}h ${minutes}m`;
+}
 
 export default function Home() {
   const [mode, setMode] = useState<InputMode>("manual");
   const [raw, setRaw] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
-  const [maxComments, setMaxComments] = useState(50);
+  const [maxComments, setMaxComments] = useState(25);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dailyCounter, setDailyCounter] = useState<DailyCounter>(() =>
+    createFreshCounter()
+  );
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(INSIGHT_COUNTER_KEY);
+
+    if (!saved) {
+      const fresh = createFreshCounter();
+      setDailyCounter(fresh);
+      window.localStorage.setItem(INSIGHT_COUNTER_KEY, JSON.stringify(fresh));
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as DailyCounter;
+
+      if (!parsed.resetAt || Date.now() > parsed.resetAt) {
+        const fresh = createFreshCounter();
+        setDailyCounter(fresh);
+        window.localStorage.setItem(INSIGHT_COUNTER_KEY, JSON.stringify(fresh));
+        return;
+      }
+
+      setDailyCounter(parsed);
+    } catch {
+      const fresh = createFreshCounter();
+      setDailyCounter(fresh);
+      window.localStorage.setItem(INSIGHT_COUNTER_KEY, JSON.stringify(fresh));
+    }
+  }, []);
+
+  const insightsLeft = Math.max(0, DAILY_INSIGHT_LIMIT - dailyCounter.used);
+  const limitReached = insightsLeft <= 0;
 
   const parseComments = (text: string): string[] =>
     text
@@ -59,6 +116,16 @@ export default function Home() {
     setResult(null);
     setLoading(true);
 
+    if (limitReached) {
+      setError(
+        `Daily limit reached. Your insights reset in ${getResetText(
+          dailyCounter.resetAt
+        )}.`
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
       let data: AnalysisResult;
 
@@ -82,6 +149,17 @@ export default function Home() {
 
       setResult(data);
 
+      const updatedCounter = {
+        ...dailyCounter,
+        used: dailyCounter.used + 1,
+      };
+
+      setDailyCounter(updatedCounter);
+      window.localStorage.setItem(
+        INSIGHT_COUNTER_KEY,
+        JSON.stringify(updatedCounter)
+      );
+
       setTimeout(() => {
         document.getElementById("results")?.scrollIntoView({
           behavior: "smooth",
@@ -100,7 +178,9 @@ export default function Home() {
   }
 
   const isAnalyzeDisabled =
-    loading || (mode === "manual" ? !raw.trim() : !youtubeUrl.trim());
+    loading ||
+    limitReached ||
+    (mode === "manual" ? !raw.trim() : !youtubeUrl.trim());
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -124,6 +204,31 @@ export default function Home() {
             Powered by Groq + YouTube Data API
           </div>
         </header>
+
+        <section className="mb-6 rounded-3xl border border-indigo-100 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-slate-900">
+                Daily insights remaining
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                You can generate {insightsLeft} more insight
+                {insightsLeft === 1 ? "" : "s"} today.
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700">
+              {insightsLeft} / {DAILY_INSIGHT_LIMIT} left
+            </div>
+          </div>
+
+          {limitReached && (
+            <p className="mt-3 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              Daily limit reached. Your counter resets in{" "}
+              {getResetText(dailyCounter.resetAt)}.
+            </p>
+          )}
+        </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
@@ -202,11 +307,12 @@ Maybe it's okay but a bit expensive.`}
                 YouTube Video Link
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Paste a public YouTube video URL. The app will fetch top-level
-                comments and analyze a sample.
+                Paste a public YouTube video URL. The app fetches a
+                relevance-based sample, sorts by likes, and analyzes the
+                selected most-liked comments.
               </p>
 
-              <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_220px]">
+              <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_260px]">
                 <input
                   value={youtubeUrl}
                   onChange={(event) => setYoutubeUrl(event.target.value)}
@@ -223,16 +329,15 @@ Maybe it's okay but a bit expensive.`}
                 >
                   {COMMENT_LIMITS.map((limit) => (
                     <option key={limit} value={limit}>
-                      Analyze {limit.toLocaleString()} comments
+                      Analyze {limit.toLocaleString()} most-liked comments
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                For large videos, use smaller samples first. Higher comment
-                counts can take longer because the backend fetches comments in
-                pages and analyzes them in AI batches.
+                To protect your daily AI limit, YouTube mode analyzes only the
+                selected most-liked comments from a relevance-based sample.
               </div>
             </div>
           )}
@@ -254,6 +359,8 @@ Maybe it's okay but a bit expensive.`}
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   Analyzing…
                 </>
+              ) : limitReached ? (
+                <>Daily Limit Reached</>
               ) : (
                 <>⚡ Analyze {mode === "youtube" ? "YouTube" : "Comments"}</>
               )}
@@ -274,7 +381,7 @@ Maybe it's okay but a bit expensive.`}
           <Spinner
             label={
               mode === "youtube"
-                ? "Fetching YouTube comments and analyzing with AI…"
+                ? "Fetching most-liked YouTube comments and analyzing with AI…"
                 : "Analyzing comments with AI…"
             }
           />
@@ -314,7 +421,7 @@ Maybe it's okay but a bit expensive.`}
 
                       <div className="rounded-2xl bg-slate-50 p-4">
                         <p className="text-xs font-medium text-slate-500">
-                          Comments Analyzed
+                          Most-Liked Comments Analyzed
                         </p>
                         <p className="mt-1 text-2xl font-bold text-slate-950">
                           {result.analyzed_comments?.toLocaleString() ??
