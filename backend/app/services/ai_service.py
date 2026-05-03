@@ -33,6 +33,7 @@ client = AsyncOpenAI(
 
 MODEL = "llama-3.3-70b-versatile"
 
+# Safer Groq limits for free/on-demand tier
 CLASSIFICATION_BATCH_SIZE = 25
 MAX_PARALLEL_AI_CALLS = 1
 
@@ -152,8 +153,8 @@ async def _classify_comment_batch(comments: List[str]) -> List[Dict[str, str]]:
 
 async def classify_comments(comments: List[str]) -> List[Dict[str, str]]:
     """
-    Classify comments in chunks so 1,000–5,000 YouTube comments do not break
-    the model context window.
+    Classify comments in chunks so larger YouTube comment batches do not break
+    the model context window or Groq token-per-minute limits.
     """
 
     chunks = [
@@ -197,10 +198,10 @@ Return ONLY valid JSON in this format:
 
 async def extract_themes(comments: List[str]) -> List[str]:
     """
-    Extract themes from a representative sample to avoid huge prompts.
+    Extract themes from a smaller representative sample to avoid Groq rate limits.
     """
 
-    sample = comments[:600]
+    sample = comments[:100]
     joined = "\n".join(f"- {comment}" for comment in sample)
 
     response = await client.chat.completions.create(
@@ -239,10 +240,10 @@ Do not use bullet points.
 async def generate_summary(comments: List[str], stats: Dict) -> str:
     """
     Produce a plain-English summary paragraph.
-    Uses a sample so large YouTube videos do not create oversized prompts.
+    Uses a smaller sample so large YouTube videos do not create oversized prompts.
     """
 
-    sample = comments[:300]
+    sample = comments[:50]
     joined = "\n".join(f"- {comment}" for comment in sample)
 
     context = (
